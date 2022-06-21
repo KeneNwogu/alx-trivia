@@ -1,18 +1,16 @@
-import os
-from flask import Flask, request, abort, jsonify
-from flask_sqlalchemy import SQLAlchemy
+from flask import Flask, request
 from flask_cors import CORS
-import random
-
-from models import setup_db, Question, Category
+from flask_sqlalchemy import Pagination
+from models import setup_db, Question, Category, db
 
 QUESTIONS_PER_PAGE = 10
+
 
 def create_app(test_config=None):
     # create and configure the app
     app = Flask(__name__)
     setup_db(app)
-
+    CORS(app)
     """
     @TODO: Set up CORS. Allow '*' for origins. Delete the sample route after completing the TODOs
     """
@@ -20,83 +18,112 @@ def create_app(test_config=None):
     """
     @TODO: Use the after_request decorator to set Access-Control-Allow
     """
+    # @app.after_request
+    # def access_control(res):
+    #     res.headers.add()
 
-    """
-    @TODO:
-    Create an endpoint to handle GET requests
-    for all available categories.
-    """
+    @app.route('/categories')
+    def categories():
+        query = Category.query.all()
+        response = dict()
+        for category in query:
+            response[category.id] = category.type
+        return {
+            "categories": response
+        }
 
+    @app.route('/questions', methods=['GET'])
+    def questions():
+        query = Category.query.all()
+        response = dict()
+        for category in query:
+            response[category.id] = category.type
+        page_num = int(request.args.get('page', 1))
+        paginated_questions = Question.query.paginate(page_num, 10, False)
+        response = {
+            "questions": [q.format() for q in paginated_questions.items],
+            "total_questions": 1,
+            "categories": response,
+            "current_category": "" if len(paginated_questions.items) < 1 else
+            Category.query.get(paginated_questions.items[0].category).type,
+        }
+        return response
 
-    """
-    @TODO:
-    Create an endpoint to handle GET requests for questions,
-    including pagination (every 10 questions).
-    This endpoint should return a list of questions,
-    number of total questions, current category, categories.
+    @app.route('/questions/<question_id>', methods=['DELETE'])
+    def delete_question(question_id):
+        question = Question.query.get(int(question_id))
+        if question:
+            question.delete()
+            db.session.commit()
+        else:
+            return {'message': 'question was not found'}, 404
 
-    TEST: At this point, when you start the application
-    you should see questions and categories generated,
-    ten questions per page and pagination at the bottom of the screen for three pages.
-    Clicking on the page numbers should update the questions.
-    """
+    @app.route('/questions', methods=['POST'])
+    def search_or_question():
+        json_data = request.get_json(force=True)
+        if len(json_data.keys()) <= 1:
+            search_term = f"%{json_data.get('searchTerm')}%"
+            results = Question.query.filter(Question.question.ilike(search_term))
 
-    """
-    @TODO:
-    Create an endpoint to DELETE question using a question ID.
+            response = {
+                "questions": [q.format() for q in results],
+                "total_questions": results.count(),
+                "current_category": "" if len(results.all()) < 1 else Category.query.get(results[0].category).type
+            }
+            return response
+        else:
+            answer = json_data.get('answer')
+            question_ = json_data.get('question')
+            difficulty = json_data.get('difficulty')
+            category_id = int(json_data.get('category'))
+            category = Category.query.get(category_id)
+            question = Question(answer=answer, question=question_, difficulty=difficulty, category=category)
+            category.questions_in_category.append(question)
+            db.session.commit()
 
-    TEST: When you click the trash icon next to a question, the question will be removed.
-    This removal will persist in the database and when you refresh the page.
-    """
+            return {'message': 'success'}
 
-    """
-    @TODO:
-    Create an endpoint to POST a new question,
-    which will require the question and answer text,
-    category, and difficulty score.
+    @app.route('/categories/<category_id>/questions')
+    def category_questions(category_id):
+        category = Category.query.get(int(category_id))
+        if category:
+            questions_under_category = Question.query.filter_by(category=int(category_id))
+            response = {
+                "questions": [q.format() for q in questions_under_category],
+                "total_questions": questions_under_category.count(),
+                "current_category": category.type
+            }
+            return response
+        return {'message': 'Invalid category'}, 404
 
-    TEST: When you submit a question on the "Add" tab,
-    the form will clear and the question will appear at the end of the last page
-    of the questions list in the "List" tab.
-    """
+    @app.route('/quizzes', methods=['POST'])
+    def quiz():
+        json_data = request.get_json(force=True)
+        previous_questions = json_data.get('previous_questions')
+        category_type = json_data.get('quiz_category')
+        new_question = Question.query.join(Category).filter(Question.id.not_in(previous_questions), Category.type.like(category_type))\
+            .first()
 
-    """
-    @TODO:
-    Create a POST endpoint to get questions based on a search term.
-    It should return any questions for whom the search term
-    is a substring of the question.
+        if new_question:
+            return {
+                "question": new_question.format()
+            }
+        else:
+            return {
+                "question": {}
+            }
 
-    TEST: Search by any phrase. The questions list will update to include
-    only question that include that string within their question.
-    Try using the word "title" to start.
-    """
+    @app.errorhandler(404)
+    def resource_not_found(e):
+        return {'message': 'resource not found'}, 404
 
-    """
-    @TODO:
-    Create a GET endpoint to get questions based on category.
+    @app.errorhandler(400)
+    def bad_request(e):
+        return {'message': 'bad request'}, 400
 
-    TEST: In the "List" tab / main screen, clicking on one of the
-    categories in the left column will cause only questions of that
-    category to be shown.
-    """
-
-    """
-    @TODO:
-    Create a POST endpoint to get questions to play the quiz.
-    This endpoint should take category and previous question parameters
-    and return a random questions within the given category,
-    if provided, and that is not one of the previous questions.
-
-    TEST: In the "Play" tab, after a user selects "All" or a category,
-    one question at a time is displayed, the user is allowed to answer
-    and shown whether they were correct or not.
-    """
-
-    """
-    @TODO:
-    Create error handlers for all expected errors
-    including 404 and 422.
-    """
+    @app.errorhandler(422)
+    def semantically_incorrect_response(e):
+        return {'message': 'unable to process request'}
 
     return app
 

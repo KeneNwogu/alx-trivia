@@ -23,7 +23,7 @@ def create_app(test_config=None):
         res.headers['Access-Control-Allow-Origin'] = '*'
         return res
 
-    @app.route('/categories')
+    @app.route('/categories', methods=['GET'])
     def categories():
         query = Category.query.all()
         response = dict()
@@ -40,7 +40,7 @@ def create_app(test_config=None):
         for category in query:
             response[category.id] = category.type
         page_num = int(request.args.get('page', 1))
-        paginated_questions = Question.query.paginate(page_num, 10, False)
+        paginated_questions = Question.query.paginate(page_num, 10, True)
         response = {
             "questions": [q.format() for q in paginated_questions.items],
             "total_questions": 1,
@@ -67,7 +67,9 @@ def create_app(test_config=None):
     def search_or_question():
         json_data = request.get_json(force=True)
         if len(json_data.keys()) <= 1:
-            search_term = f"%{json_data.get('searchTerm', '')}%"
+            search_term = f"%{json_data.get('searchTerm')}%"
+            if not search_term:
+                abort(400)
             results = Question.query.filter(Question.question.ilike(search_term))
 
             response = {
@@ -108,9 +110,11 @@ def create_app(test_config=None):
     def quiz():
         json_data = request.get_json(force=True)
         previous_questions = json_data.get('previous_questions')
-        category_type = json_data.get('quiz_category')
+        category_type = json_data.get('quiz_category').get('type')
         if not (previous_questions and category_type):
             abort(400)
+        if not Category.query.filter_by(type=category_type):
+            return {'success': False, 'message': 'invalid category type'}, 400
         new_question = Question.query.join(Category).filter(Question.id.not_in(previous_questions), Category.type.like(category_type))\
             .first()
 
@@ -126,6 +130,10 @@ def create_app(test_config=None):
     @app.errorhandler(404)
     def resource_not_found(e):
         return {'message': 'resource not found'}, 404
+
+    @app.errorhandler(405)
+    def invalid_request_method(e):
+        return {'message': 'invalid request method'}, 405
 
     @app.errorhandler(400)
     def bad_request(e):

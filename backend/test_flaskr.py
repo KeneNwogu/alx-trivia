@@ -57,7 +57,7 @@ class TriviaTestCase(unittest.TestCase):
         previous_questions = [1, 2, 3]
         category = "History"
         response = self.client().post('/quizzes', data=json.dumps({'previous_questions': previous_questions,
-                                                                   'quiz_category': category}))
+                                                                   'quiz_category': {'type': category}}))
 
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.data)
@@ -110,6 +110,36 @@ class TriviaTestCase(unittest.TestCase):
         data = json.loads(response.data)
         self.assertEqual(response.status_code, 404)
         self.assertEqual(data['message'], 'resource not found')
+
+    # additional failure cases
+    def test_invalid_method_categories(self):
+        response = self.client().post('/categories')
+        self.assertEqual(response.status_code, 405)
+
+    def test_invalid_page_questions_endpoint(self):
+        response = self.client().get('/questions?page=900')  # random high number
+        data = json.loads(response.data)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(str(data.get('message')).lower(), 'resource not found')
+
+    def test_invalid_category_questions(self):
+        response = self.client().get('/categories/0/questions')
+        data = json.loads(response.data)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(str(data.get('message')).lower(), 'invalid category')
+
+    def test_invalid_search_term(self):
+        # empty search term was passed
+        response = self.client().post('/questions', data={'searchTerm': None})
+        self.assertEqual(response.status_code, 400)
+
+    def test_invalid_quiz_endpoint(self):
+        previous_questions = [1, 2, 3]
+        category = "not-a-valid-category-type"
+        response = self.client().post('/quizzes', data=json.dumps({'previous_questions': previous_questions,
+                                                                   'quiz_category': {'type': category}}))
+
+        self.assertEqual(response.status_code, 200)
 
 
 # Make the tests conveniently executable

@@ -64,6 +64,53 @@ class TriviaTestCase(unittest.TestCase):
         question_id = data.get('question').get('id')
         self.assertNotIn(previous_questions, [question_id])
 
+    def test_create_question(self):
+        question = {
+            'question': 'Which anime constitute the "Big 3"?',
+            'answer': 'Naruto, Bleach, One Piece',
+            'category': '1',
+            'difficulty': 1
+        }
+
+        response = self.client().post('/questions', json=question)
+        data = json.loads(response.data)
+        self.assertEqual(response.status_code, 200)
+
+    def test_invalid_data_create_question(self):
+        question = {
+            'question': 'Do you love udacity?',
+            'answer': 'Yes i really do!',
+            'difficulty': 1
+        }
+        # purposely posting a question with a missing parameter
+        response = self.client().post('/questions', data=question)
+        self.assertEqual(response.status_code, 400)
+
+    def test_delete_question(self):
+        # add a new question
+        question = Question(question='Do you love udacity?', answer='Yes i really do!', category=1, difficulty=1)
+        with self.app.app_context():
+            self.db.session.add(question)
+            self.db.session.commit()
+            self.db.session.refresh(question)
+
+        # delete the question just created
+        response = self.client().delete(f'/questions/{question.id}')
+        data = json.loads(response.data)
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(data.get('success'))
+
+    def test_422_delete_question(self):
+        # deletes a question that does not exist
+        response = self.client().delete(f'/questions/{0}')
+        self.assertEqual(response.status_code, 422)
+
+    def test_invalid_endpoint(self):
+        response = self.client().get('/not-a-real-endpoint')
+        data = json.loads(response.data)
+        self.assertEqual(response.status_code, 404)
+        self.assertEqual(data['message'], 'resource not found')
+
 
 # Make the tests conveniently executable
 if __name__ == "__main__":

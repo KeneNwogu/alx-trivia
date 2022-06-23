@@ -1,4 +1,4 @@
-from flask import Flask, request
+from flask import Flask, request, abort
 from flask_cors import CORS
 from flask_sqlalchemy import Pagination
 from models import setup_db, Question, Category, db
@@ -18,9 +18,10 @@ def create_app(test_config=None):
     """
     @TODO: Use the after_request decorator to set Access-Control-Allow
     """
-    # @app.after_request
-    # def access_control(res):
-    #     res.headers.add()
+    @app.after_request
+    def access_control(res):
+        res.headers['Access-Control-Allow-Origin'] = '*'
+        return res
 
     @app.route('/categories')
     def categories():
@@ -56,13 +57,17 @@ def create_app(test_config=None):
             question.delete()
             db.session.commit()
         else:
-            return {'message': 'question was not found'}, 404
+            return {'success': False, 'question_id': None}, 422
+        return {
+            'success': True,
+            'question_id': int(question_id)
+        }
 
     @app.route('/questions', methods=['POST'])
     def search_or_question():
         json_data = request.get_json(force=True)
         if len(json_data.keys()) <= 1:
-            search_term = f"%{json_data.get('searchTerm')}%"
+            search_term = f"%{json_data.get('searchTerm', '')}%"
             results = Question.query.filter(Question.question.ilike(search_term))
 
             response = {
@@ -75,13 +80,16 @@ def create_app(test_config=None):
             answer = json_data.get('answer')
             question_ = json_data.get('question')
             difficulty = json_data.get('difficulty')
-            category_id = int(json_data.get('category'))
-            category = Category.query.get(category_id)
+            category_id = json_data.get('category')
+            if not (answer and question_ and difficulty and category_id):
+                abort(400)
+            category = Category.query.get(int(category_id))
             question = Question(answer=answer, question=question_, difficulty=difficulty, category=category)
             category.questions_in_category.append(question)
             db.session.commit()
 
-            return {'message': 'success'}
+            return {'question': question.question, 'answer': question.answer,
+                    'difficulty': question.difficulty, 'category': category.id}
 
     @app.route('/categories/<category_id>/questions')
     def category_questions(category_id):
@@ -101,6 +109,8 @@ def create_app(test_config=None):
         json_data = request.get_json(force=True)
         previous_questions = json_data.get('previous_questions')
         category_type = json_data.get('quiz_category')
+        if not (previous_questions and category_type):
+            abort(400)
         new_question = Question.query.join(Category).filter(Question.id.not_in(previous_questions), Category.type.like(category_type))\
             .first()
 

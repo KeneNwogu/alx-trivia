@@ -41,14 +41,14 @@ def create_app(test_config=None):
             response[category.id] = category.type
         page_num = int(request.args.get('page', 1))
         paginated_questions = Question.query.paginate(page_num, 10, True)
-        response = {
+        page_response = {
             "questions": [q.format() for q in paginated_questions.items],
-            "total_questions": 1,
+            "total_questions": len(paginated_questions.items),
             "categories": response,
             "current_category": "" if len(paginated_questions.items) < 1 else
             Category.query.get(paginated_questions.items[0].category).type,
         }
-        return response
+        return page_response
 
     @app.route('/questions/<question_id>', methods=['DELETE'])
     def delete_question(question_id):
@@ -109,9 +109,9 @@ def create_app(test_config=None):
     @app.route('/quizzes', methods=['POST'])
     def quiz():
         json_data = request.get_json(force=True)
-        previous_questions = json_data.get('previous_questions')
+        previous_questions = json_data.get('previous_questions', [])
         category_type = json_data.get('quiz_category').get('type')
-        if not (previous_questions and category_type):
+        if not category_type:
             abort(400)
         if not Category.query.filter_by(type=category_type):
             return {'success': False, 'message': 'invalid category type'}, 400

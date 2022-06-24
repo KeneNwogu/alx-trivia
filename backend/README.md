@@ -1,5 +1,6 @@
 This project is currently only available locally. (http://127.0.0.1:5000/). No hosted url is available.
-To run please enter the command "python run.py" in the commmand line after navigating to the backend folder.
+Before starting the backend application, you'd need to set an environment variable "TRIVIA_DB" that has the database_uri or path.
+To run please enter the command "python run.py" in the command line after navigating to the backend folder.
 
 API DOCUMENTATION
 
